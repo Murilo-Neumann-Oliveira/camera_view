@@ -10,14 +10,14 @@ app = Flask(__name__)
 # ======================
 # CALIBRAÇÃO
 # ======================
-dados = np.load(r"C:\Mestrado\03_Processamento_Imagens_PV\03_Calibracao_Camera\calibration_camera.npz")
+dados = np.load("/app/calibration_camera.npz")
 cameraMatrix = dados['cameraMatrix']
 distCoeffs = dados['distCoeffs']
 
 # ======================
 # MODELO SOLAR
 # ======================
-modelo = joblib.load(r'C:\Mestrado\04_Modelos_Machine_Learning\02_Rastreio_Sol\modelo_rastreio_sol.pkl')
+modelo = joblib.load('/app/modelo_rastreio_sol.pkl')
 
 LOCAL = pvlib.location.Location(-29.713, -53.716, tz='America/Sao_Paulo')
 
