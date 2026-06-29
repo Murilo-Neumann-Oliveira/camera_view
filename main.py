@@ -9,36 +9,63 @@ import time
 import os
 from dotenv import load_dotenv
 
+from ultralytics import YOLO
+
 
 load_dotenv()
+
 app = Flask(__name__)
 
-caminho_dados = os.getenv("dados")
 
+# =====================================================
+# CAMINHOS
+# =====================================================
+
+caminho_dados = os.getenv("dados")
 caminho_modelo = os.getenv("modelo")
+
 
 print(f"Caminho dados: {caminho_dados}")
 print(f"Caminho modelo: {caminho_modelo}")
+
+
+
 # =====================================================
-# CALIBRAÇÃO DA CÂMERA
+# YOLO SEGMENTAÇÃO NUVENS
 # =====================================================
+
+modelo_yolo = YOLO(
+    "modelo_nuvens.pt"
+)
+
+
+
+# =====================================================
+# CALIBRAÇÃO CAMERA
+# =====================================================
+
 
 dados = np.load(
     caminho_dados
 )
 
+
 cameraMatrix = dados["cameraMatrix"]
+
 distCoeffs = dados["distCoeffs"]
 
 
 
+
 # =====================================================
-# MODELO DE RASTREIO DO SOL
+# MODELO SOL
 # =====================================================
+
 
 modelo = joblib.load(
     caminho_modelo
 )
+
 
 
 LOCAL = pvlib.location.Location(
@@ -50,8 +77,9 @@ LOCAL = pvlib.location.Location(
 
 
 # =====================================================
-# FUNÇÃO POSIÇÃO SOLAR
+# POSIÇÃO SOLAR
 # =====================================================
+
 
 def solar_pixel(timestamp):
 
@@ -70,16 +98,18 @@ def solar_pixel(timestamp):
     ze = pos["apparent_zenith"].values[0]
 
 
+
     previsao = modelo.predict(
-        [[az, ze]]
+        [[az,ze]]
     )
+
 
 
     px = int(previsao[0][0])
     py = int(previsao[0][1])
 
 
-    return px, py
+    return px,py
 
 
 
@@ -88,15 +118,16 @@ def solar_pixel(timestamp):
 # CAMERA RTSP
 # =====================================================
 
+
 os.environ[
-    "OPENCV_FFMPEG_CAPTURE_OPTIONS"
+"OPENCV_FFMPEG_CAPTURE_OPTIONS"
 ] = "rtsp_transport;tcp"
 
 
 
 RTSP = (
-    "rtsp://admin:admin123@192.168.100.23:554/"
-    "cam/realmonitor?channel=1&subtype=0"
+"rtsp://admin:admin123@192.168.100.23:554/"
+"cam/realmonitor?channel=1&subtype=0"
 )
 
 
@@ -106,24 +137,21 @@ class Camera:
 
     def __init__(self,url):
 
-        self.cap = cv2.VideoCapture(
+        self.cap=cv2.VideoCapture(
             url,
             cv2.CAP_FFMPEG
         )
 
 
-        self.frame = None
+        self.frame=None
 
-        self.lock = threading.Lock()
+        self.lock=threading.Lock()
 
 
-        self.thread = threading.Thread(
+        threading.Thread(
             target=self.update,
             daemon=True
-        )
-
-
-        self.thread.start()
+        ).start()
 
 
 
@@ -132,24 +160,20 @@ class Camera:
         while True:
 
 
-            ret, frame = self.cap.read()
+            ret,frame=self.cap.read()
 
 
             if ret:
 
-
                 with self.lock:
 
-                    self.frame = frame
+                    self.frame=frame
 
 
             else:
 
-                print(
-                    "Erro lendo camera"
-                )
-
                 time.sleep(1)
+
 
 
 
@@ -166,14 +190,92 @@ class Camera:
 
 
 
-camera = Camera(RTSP)
+
+camera=Camera(RTSP)
+
 
 
 
 
 # =====================================================
-# STREAM VIDEO
+# YOLO SEGMENTAÇÃO
 # =====================================================
+
+
+def segmentar_nuvens(frame):
+
+
+    resultados = modelo_yolo(
+        frame,
+        conf=0.1,
+        verbose=False
+    )
+
+
+
+    for r in resultados:
+
+
+        if r.masks is None:
+
+            continue
+
+
+
+        masks = r.masks.data.cpu().numpy()
+
+
+
+        for mask in masks:
+
+
+            mask=cv2.resize(
+                mask,
+                (
+                frame.shape[1],
+                frame.shape[0]
+                )
+            )
+
+
+
+            mask=(mask*255).astype(
+                np.uint8
+            )
+
+
+
+            overlay=np.zeros_like(frame)
+
+
+
+            overlay[:,:,0]=255
+
+
+
+            frame[
+                mask>100
+            ] = (
+                0.6*frame[
+                    mask>100
+                ]
+                +
+                0.4*overlay[
+                    mask>100
+                ]
+            )
+
+
+    return frame
+
+
+
+
+
+# =====================================================
+# STREAM
+# =====================================================
+
 
 def generate_frames():
 
@@ -181,7 +283,8 @@ def generate_frames():
     while True:
 
 
-        frame = camera.get_frame()
+
+        frame=camera.get_frame()
 
 
 
@@ -191,11 +294,13 @@ def generate_frames():
 
 
 
-        # ---------------------------------
-        # CORREÇÃO DA DISTORÇÃO
-        # ---------------------------------
 
-        frame = cv2.undistort(
+        # ==============================
+        # UNDISTORT
+        # ==============================
+
+
+        frame=cv2.undistort(
             frame,
             cameraMatrix,
             distCoeffs
@@ -203,11 +308,23 @@ def generate_frames():
 
 
 
-        # ---------------------------------
-        # TEMPO ATUAL
-        # ---------------------------------
+        # ==============================
+        # YOLO NUVENS
+        # ==============================
 
-        timestamp = pd.Timestamp.now(
+
+        frame=segmentar_nuvens(
+            frame
+        )
+
+
+
+        # ==============================
+        # TEMPO
+        # ==============================
+
+
+        timestamp=pd.Timestamp.now(
             tz="America/Sao_Paulo"
         ).strftime(
             "%Y-%m-%d %H:%M:%S"
@@ -215,19 +332,17 @@ def generate_frames():
 
 
 
-        # ---------------------------------
-        # POSIÇÃO DO SOL
-        # ---------------------------------
 
-        px, py = solar_pixel(
+        # ==============================
+        # SOL
+        # ==============================
+
+
+        px,py=solar_pixel(
             timestamp
         )
 
 
-
-        # ---------------------------------
-        # DESENHO
-        # ---------------------------------
 
         cv2.circle(
             frame,
@@ -248,12 +363,13 @@ def generate_frames():
 
 
 
+
         cv2.putText(
             frame,
             timestamp,
             (50,50),
             cv2.FONT_HERSHEY_SIMPLEX,
-            1.2,
+            1,
             (0,255,0),
             2
         )
@@ -262,7 +378,7 @@ def generate_frames():
 
         cv2.putText(
             frame,
-            f"Sol: ({px},{py})",
+            f"Sol: {px},{py}",
             (50,100),
             cv2.FONT_HERSHEY_SIMPLEX,
             1,
@@ -272,37 +388,37 @@ def generate_frames():
 
 
 
-        # ---------------------------------
-        # JPEG
-        # ---------------------------------
 
-        ret, buffer = cv2.imencode(
+        # ==============================
+        # JPEG
+        # ==============================
+
+
+        ret,buffer=cv2.imencode(
             ".jpg",
             frame
         )
 
 
-        if not ret:
 
-            continue
-
+        if ret:
 
 
-        yield (
+            yield(
             b"--frame\r\n"
             b"Content-Type: image/jpeg\r\n\r\n"
             +
             buffer.tobytes()
             +
             b"\r\n"
-        )
+            )
 
 
 
 
 
 # =====================================================
-# PAGINA WEB
+# WEB
 # =====================================================
 
 
@@ -311,34 +427,24 @@ def index():
 
     return """
 
-    <html>
+<html>
 
-    <head>
-
-    <title>
-    Rastreamento Solar
-    </title>
-
-    </head>
+<body style="background:black;text-align:center">
 
 
-    <body style="background:black;text-align:center;">
+<h1 style="color:white">
+☀️ YOLO + Rastreamento Solar
+</h1>
 
 
-    <h1 style="color:white;">
-    ☀️ Rastreamento Solar em Tempo Real
-    </h1>
+<img src="/video" width="90%">
 
 
-    <img src="/video" width="90%">
+</body>
 
+</html>
 
-    </body>
-
-    </html>
-
-    """
-
+"""
 
 
 
@@ -355,11 +461,7 @@ def video():
 
 
 
-# =====================================================
-# START
-# =====================================================
-
-if __name__ == "__main__":
+if __name__=="__main__":
 
 
     app.run(
