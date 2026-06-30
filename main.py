@@ -23,11 +23,11 @@ app = Flask(__name__)
 
 caminho_dados = os.getenv("dados")
 caminho_modelo = os.getenv("modelo")
-
+caminho_nuvens = os.getenv("nuvens")
 
 print(f"Caminho dados: {caminho_dados}")
 print(f"Caminho modelo: {caminho_modelo}")
-
+print(f"Caminho Nuvens: {caminho_nuvens}")
 
 
 # =====================================================
@@ -35,7 +35,7 @@ print(f"Caminho modelo: {caminho_modelo}")
 # =====================================================
 
 modelo_yolo = YOLO(
-    "modelo_nuvens.pt"
+    caminho_nuvens
 )
 
 
@@ -207,7 +207,7 @@ def segmentar_nuvens(frame):
 
     resultados = modelo_yolo(
         frame,
-        conf=0.1,
+        conf=0.05,
         verbose=False
     )
 
