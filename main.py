@@ -24,6 +24,7 @@ app = Flask(__name__)
 caminho_dados = os.getenv("dados")
 caminho_modelo = os.getenv("modelo")
 caminho_nuvens = os.getenv("nuvens")
+caminho_http = os.getenv("ip")
 
 print(f"Caminho dados: {caminho_dados}")
 print(f"Caminho modelo: {caminho_modelo}")
@@ -41,7 +42,7 @@ modelo_yolo = YOLO(
 
 
 # =====================================================
-# CALIBRAÇÃO CAMERA
+# CALIBRAÇÃO CAMERA                           2
 # =====================================================
 
 
@@ -126,8 +127,7 @@ os.environ[
 
 
 RTSP = (
-"rtsp://admin:admin123@192.168.100.23:554/"
-"cam/realmonitor?channel=1&subtype=0"
+caminho_http
 )
 
 
